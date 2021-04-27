@@ -1,96 +1,24 @@
-// You can use this skeleton testbench code, the textbook testbench code, or your own
-module MIPS_Testbench ();
-  reg CLK;
-  reg INIT, RST;
-  wire CS;
-  wire WE;
-  wire [31:0] Mem_Bus;
-  wire [6:0] Address;
-  wire [7:0] OUT;
-  
-  parameter N = 10;         //length of input code
-  reg[31:0] expected[N:1];  //input code
-  reg[6:0] AddressTB;
-  wire WE_Mux, CS_Mux;
-  reg WE_TB, CS_TB;
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 04/26/2021 03:57:17 PM
+// Design Name: 
+// Module Name: lab7fr
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
 
-  initial
-  begin
-    CLK = 0;
-    expected[1] = 32'h00000006;
-    expected[2] = 32'h00000012;
-    expected[3] = 32'h00000018;
-    expected[4] = 32'h0000000C;
-    expected[5] = 32'h00000002;
-    expected[6] = 32'h00000016;
-    expected[7] = 32'h00000001;
-    expected[8] = 32'h00000120;
-    expected[9] = 32'h00000003;
-    expected[10] = 32'h00412022;
-  end
-
-
-  MIPS CPU(CLK, RST, CS, WE, Address, Mem_Bus, OUT);
-  Memory MEM(CS, WE, CLK, Address, Mem_Bus);
-
-  always
-  begin
-    #5 CLK = !CLK;
-  end
-
-	//FOR SIMULATION PART:
-  integer i;
-/*
-  always begin
-    RST <= 1'b1; //reset the processor
-    @(posedge CLK);
-    @(posedge CLK);
-    @(posedge CLK);
-    //Notice that the memory is initialize in the in the memory module not here
-
-    @(posedge CLK);
-    // driving reset low here puts processor in normal operating mode
-    RST = 1'b0;
-
-	//BELOW is for Simulation part only:
-    for(i = 1; i <= N; i = i + 1) begin
-        @(posedge WE);
-        @(negedge CLK);
-        if(Mem_Bus != expected[i])
-            $display("Output mistmatch: got %d, expected %d", Mem_Bus, expected[i]);
-        else $display("Output correct: got %d, expected %d", Mem_Bus, expected[i]);
-    end
-    //add your testing code here 
-    // you can add in a 'Halt' signal here as well to test Halt operation
-    // you will be verifying your program operation using the
-    // waveform viewer and/or self-checking operations
-    $display("TEST COMPLETE");
-    $stop;
-  end
-*/
-
-	//FOR SYNTHESIS PART:
-
-  initial begin
-    RST <= 1'b1; //reset the processor
-    @(posedge CLK);
-    @(posedge CLK);
-    @(posedge CLK);
-    //Notice that the memory is initialize in the in the memory module not here
-
-    @(posedge CLK);
-    // driving reset low here puts processor in normal operating mode
-    RST = 1'b0;  
-  end
-
-
-endmodule
-
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
 
 //module Complete_MIPS(CLK, RST, A_Out, D_Out);
 module Complete_MIPS(CLK, RST);
@@ -215,6 +143,11 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
   parameter srl = 6'b000010;
   parameter sll = 6'b000000;
   parameter jr = 6'b001000;
+  parameter rbit = 6'b101111;
+  parameter rev =  6'b110000;
+  parameter add8 = 6'b101101;
+  parameter sadd = 6'b110001;
+  parameter ssub = 6'b110010;
 
   //non-special instructions, values of opcodes:
   parameter addi = 6'b001000;
@@ -225,6 +158,8 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
   parameter beq = 6'b000100;
   parameter bne = 6'b000101;
   parameter j = 6'b000010;
+  parameter lui = 6'b001111;
+  parameter jal = 6'b000011;
 
   //instruction format
   parameter R = 2'd0;
@@ -242,13 +177,15 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
   reg fetchDorI;
   wire [4:0] dr;
   reg [2:0] state, nstate;
+  reg save_or_imm, save_or_imm_ld;
+  integer i = 0;
 
   //combinational
   assign imm_ext = (instr[15] == 1)? {16'hFFFF, instr[15:0]} : {16'h0000, instr[15:0]};//Sign extend immediate field
-  assign dr = (format == R)? instr[15:11] : instr[20:16]; //Destination Register MUX (MUX1)
+  assign dr = (`opcode == jal)? (5'b11111) : (format == R)? instr[15:11] : instr[20:16]; //Destination Register MUX (MUX1)
   assign alu_in_A = readreg1;
   assign alu_in_B = (reg_or_imm_save)? imm_ext : readreg2; //ALU MUX (MUX2)
-  assign reg_in = (alu_or_mem_save)? Mem_Bus : alu_result_save; //Data MUX
+  assign reg_in = (`opcode == jal)? (pc + 1):(save_or_imm_ld)? (imm_ext << 16):(alu_or_mem_save)? Mem_Bus : alu_result_save; //Data MUX
   assign format = (`opcode == 6'd0)? R : ((`opcode == 6'd2)? J : I);
   assign Mem_Bus = (writing)? readreg2 : 32'bZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ;
 
@@ -265,22 +202,25 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
     regw = 0;
     fetchDorI = 0;
     writing = 0;
-    reg_or_imm = 0; reg_or_imm_save = 0;
+    reg_or_imm = 0; reg_or_imm_save = 0; save_or_imm = 0; save_or_imm_ld = 0;
     alu_or_mem_save = 0;
   end
 
   always @(*)
   begin
     fetchDorI = 0; CS = 0; WE = 0; regw = 0; writing = 0; alu_result = 32'd0;
-    npc = pc; op = jr; reg_or_imm = 0; alu_or_mem = 0; nstate = 3'd0;
+    npc = pc; op = jr; reg_or_imm = 0; alu_or_mem = 0; nstate = 3'd0; i = 0; save_or_imm = 0;
     case (state)
       0: begin //fetch
         npc = pc + 7'd1; CS = 1; nstate = 3'd1;
         fetchDorI = 1;
       end
       1: begin //decode
-        nstate = 3'd2; reg_or_imm = 0; alu_or_mem = 0;
+        nstate = 3'd2; reg_or_imm = 0; alu_or_mem = 0; save_or_imm = 0;
         if (format == J) begin //jump, and finish
+          if(`opcode == jal) begin
+            regw = 1; 
+          end
           npc = instr[6:0];
           nstate = 3'd0;
         end
@@ -292,7 +232,11 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
             op = add;
             alu_or_mem = 1;
           end
-          else if ((`opcode == lw)||(`opcode == sw)||(`opcode == addi)) op = add;
+          else if(`opcode == lui) begin
+            op = add;
+            save_or_imm = 1;
+          end
+          else if ((`opcode == lw)||(`opcode == sw)||(`opcode == addi)||(`opcode == lui)) op = add;
           else if ((`opcode == beq)||(`opcode == bne)) begin
             op = sub;
             reg_or_imm = 0;
@@ -301,7 +245,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
           else if (`opcode == ori) op = or1;
         end
       end
-      2: begin //execute
+      2: begin //execute       
         nstate = 3'd3;
         if (opsave == and1) alu_result = alu_in_A & alu_in_B;
         else if (opsave == or1) alu_result = alu_in_A | alu_in_B;
@@ -311,6 +255,30 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
         else if (opsave == sll) alu_result = alu_in_B << `numshift;
         else if (opsave == slt) alu_result = (alu_in_A < alu_in_B)? 32'd1 : 32'd0;
         else if (opsave == xor1) alu_result = alu_in_A ^ alu_in_B;
+        else if (opsave == rbit) begin                      //rbit function
+            for(i = 0; i < 32; i = i + 1)
+                alu_result[i] = alu_in_B[31-i];
+        end
+        else if (opsave == rev) begin                       //rev function
+            alu_result[31:24] = alu_in_B[7:0]; 
+            alu_result[23:16] = alu_in_B[15:8]; 
+            alu_result[15:8] = alu_in_B[23:16];
+            alu_result[7:0] = alu_in_B[31:24];
+        end
+        else if (opsave == add8) begin                      //add8 function
+            alu_result[31:24] = alu_in_A[31:24] + alu_in_B[31:24];
+            alu_result[23:16] = alu_in_A[23:16] + alu_in_B[23:16];  
+            alu_result[15:8] = alu_in_A[15:8] + alu_in_B[15:8];  
+            alu_result[7:0] = alu_in_A[7:0] + alu_in_B[7:0]; 
+        end
+        else if (opsave == sadd) begin                      //sadd function
+            if ((alu_in_A + alu_in_B) > (32'hFFFFFFFF)) alu_result = 32'hFFFFFFFF; 
+            else  alu_result = alu_in_A + alu_in_B;
+        end
+        else if (opsave == ssub) begin                       //ssubb function
+            if ((alu_in_A - alu_in_B) < 0) alu_result = 0; 
+            else  alu_result = alu_in_A - alu_in_B; 
+        end
         if (((alu_in_A == alu_in_B)&&(`opcode == beq)) || ((alu_in_A != alu_in_B)&&(`opcode == bne))) begin
           npc = pc + imm_ext[6:0];
           nstate = 3'd0;
@@ -329,7 +297,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
           WE = 1;
           writing = 1;
         end
-        else if (`opcode == lw) begin
+        else if ((`opcode == lw) || (`opcode == lui)) begin
           CS = 1;
           nstate = 3'd4;
         end
@@ -337,7 +305,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
       4: begin
         nstate = 3'd0;
         CS = 1;
-        if (`opcode == lw) regw = 1;
+        if ((`opcode == lw) || (`opcode == lui)) regw = 1;
       end
     endcase
   end //always
@@ -356,6 +324,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, OUT);
     if (state == 3'd0) instr <= Mem_Bus;
     else if (state == 3'd1) begin
       opsave <= op;
+      save_or_imm_ld <= save_or_imm;
       reg_or_imm_save <= reg_or_imm;
       alu_or_mem_save <= alu_or_mem;
     end
