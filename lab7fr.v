@@ -1,37 +1,116 @@
-`timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
-// Create Date: 04/26/2021 03:57:17 PM
-// Design Name: 
-// Module Name: lab7fr
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
-// Description: 
-// 
-// Dependencies: 
-// 
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
+// You can use this skeleton testbench code, the textbook testbench code, or your own
+module MIPS_Testbench ();
+  reg CLK;
+  reg INIT, RST;
+  wire CS;
+  wire WE;
+  wire [31:0] Mem_Bus;
+  wire [6:0] Address;
+  wire [7:0] OUT;
+  wire [31:0] reg2;
+  
+  parameter N = 10;         //length of input code
+  reg[31:0] expected[N:1];  //input code
+  reg[6:0] AddressTB;
+  wire WE_Mux, CS_Mux;
+  reg WE_TB, CS_TB;
+  reg [2:0] ctrl;
 
+  initial
+  begin
+    CLK = 0;
+    expected[1] = 32'h00000006;
+    expected[2] = 32'h00000012;
+    expected[3] = 32'h00000018;
+    expected[4] = 32'h0000000C;
+    expected[5] = 32'h00000002;
+    expected[6] = 32'h00000016;
+    expected[7] = 32'h00000001;
+    expected[8] = 32'h00000120;
+    expected[9] = 32'h00000003;
+    expected[10] = 32'h00412022;
+  end
+
+
+  //MIPS CPU(CLK, RST, CS, WE, Address, Mem_Bus, OUT);
+//  Memory MEM(CS, WE, CLK, Address, Mem_Bus);
+
+  Complete_MIPS c1(CLK, RST, ctrl, reg2, OUT);
+
+  always
+  begin
+    #5 CLK = !CLK;
+  end
+
+	//FOR SIMULATION PART:
+  integer i;
+/*
+  always begin
+    RST <= 1'b1; //reset the processor
+    @(posedge CLK);
+    @(posedge CLK);
+    @(posedge CLK);
+    //Notice that the memory is initialize in the in the memory module not here
+
+    @(posedge CLK);
+    // driving reset low here puts processor in normal operating mode
+    RST = 1'b0;
+
+	//BELOW is for Simulation part only:
+    for(i = 1; i <= N; i = i + 1) begin
+        @(posedge WE);
+        @(negedge CLK);
+        if(Mem_Bus != expected[i])
+            $display("Output mistmatch: got %d, expected %d", Mem_Bus, expected[i]);
+        else $display("Output correct: got %d, expected %d", Mem_Bus, expected[i]);
+    end
+    //add your testing code here 
+    // you can add in a 'Halt' signal here as well to test Halt operation
+    // you will be verifying your program operation using the
+    // waveform viewer and/or self-checking operations
+    $display("TEST COMPLETE");
+    $stop;
+  end
+*/
+
+	//FOR SYNTHESIS PART:
+
+  initial begin
+    RST <= 1'b1; //reset the processor
+    @(posedge CLK);
+    @(posedge CLK);
+    @(posedge CLK);
+    //Notice that the memory is initialize in the in the memory module not here
+
+    @(posedge CLK);
+    // driving reset low here puts processor in normal operating mode
+    RST = 1'b0;  
+  end
+
+
+endmodule
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 //module Complete_MIPS(CLK, RST, A_Out, D_Out);
-module Complete_MIPS(CLK, RST, ctrl);
+module Complete_MIPS(CLK, RST, ctrl, reg2, OUT);
   // Will need to be modified to add functionality
   input CLK;
   input RST;
   input [2:0] ctrl;
+  output [31:0] reg2;
+  output [7:0] OUT;
 
   wire CS, WE;
   wire [6:0] ADDR;
   wire [31:0] Mem_Bus;
+  
 
-  MIPS CPU(CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus);
+  MIPS CPU(CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT, reg2);
   Memory MEM(CS, WE, CLK, ADDR, Mem_Bus);
 
 endmodule
@@ -60,7 +139,8 @@ module Memory(CS, WE, CLK, ADDR, Mem_Bus);
 		RAM[i] = 32'd0;	//intialize all locations to 0
 	end
 	//$readmemh("MIPS_Instructions", RAM); 	//- for Simulation part
-	$readmemh("rotate_bit", RAM);
+	//$readmemh("rotate_bit", RAM);
+	$readmemh("test_program", RAM);
 	
   end
 
@@ -120,6 +200,7 @@ module REG(CLK, ctrl, RegW, DR, SR1, SR2, Reg_In, ReadReg1, ReadReg2, reg2, OUT)
     endcase
     
     if(RegW == 1'b1) REG[DR] <= Reg_In[31:0];
+    if((RegW == 1'b1) && (DR == 2'd31)) REG[DR] <= Reg_In[31:0] - 1;
 
     ReadReg1 <= REG[SR1];
     ReadReg2 <= REG[SR2];
@@ -139,13 +220,14 @@ endmodule
 `define f_code instr[5:0]
 `define numshift instr[10:6]
 
-module MIPS (CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT);
+module MIPS (CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT, reg2);
   input CLK, RST;
   input [2:0] ctrl;
   output reg CS, WE;
   output [6:0] ADDR;
   inout [31:0] Mem_Bus;
   output [7:0] OUT;	//lower 8 bits of $1
+  output [31:0] reg2;
 
   //special instructions (opcode == 000000), values of F code (bits 5-0):
   parameter add = 6'b100000;
@@ -199,15 +281,15 @@ module MIPS (CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT);
   assign dr = (`opcode == jal)? (5'b11111) : (format == R)? instr[15:11] : instr[20:16]; //Destination Register MUX (MUX1)
   assign alu_in_A = readreg1;
   assign alu_in_B = (reg_or_imm_save)? imm_ext : readreg2; //ALU MUX (MUX2)
-  assign reg_in = (`opcode == jal)? (pc + 1):(save_or_imm_ld)? (imm_ext << 16):(alu_or_mem_save)? Mem_Bus : alu_result_save; //Data MUX
-  assign format = (`opcode == 6'd0)? R : ((`opcode == 6'd2)? J : I);
+  assign reg_in = (`opcode == jal)? (pc):(save_or_imm_ld)? (imm_ext << 16):(alu_or_mem_save)? Mem_Bus : alu_result_save; //Data MUX
+  assign format = (`opcode == 6'd0)? R : ((`opcode == 6'd2 | `opcode == 6'd3)? J : I);
   assign Mem_Bus = (writing)? readreg2 : 32'bZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ;
 
   //drive memory bus only during writes
   assign ADDR = (fetchDorI)? pc : alu_result_save[6:0]; //ADDR Mux
 
   //wire [7:0] OUT_wire;	//lower 8 bits of $1
-  REG Register(CLK, ctrl, regw, dr, `sr1, `sr2, reg_in, readreg1, readreg2, OUT);
+  REG Register(CLK, ctrl, regw, dr, `sr1, `sr2, reg_in, readreg1, readreg2, reg2, OUT);
 
   initial begin
     op = and1; opsave = and1;
