@@ -278,7 +278,7 @@ module MIPS (CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT, reg2);
 
   //combinational
   assign imm_ext = (instr[15] == 1)? {16'hFFFF, instr[15:0]} : {16'h0000, instr[15:0]};//Sign extend immediate field
-  assign dr = (`opcode == jal)? (5'b11111) : (format == R)? instr[15:11] : instr[20:16]; //Destination Register MUX (MUX1)
+  assign dr = (`opcode == jal)? (5'b11111) : (format == R)? ((`f_code == rbit | `f_code == rev) ? instr[25:21] : instr[15:11]) : instr[20:16]; //Destination Register MUX (MUX1)
   assign alu_in_A = readreg1;
   assign alu_in_B = (reg_or_imm_save)? imm_ext : readreg2; //ALU MUX (MUX2)
   assign reg_in = (`opcode == jal)? (pc):(save_or_imm_ld)? (imm_ext << 16):(alu_or_mem_save)? Mem_Bus : alu_result_save; //Data MUX
