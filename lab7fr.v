@@ -275,6 +275,9 @@ module MIPS (CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT, reg2);
   reg [2:0] state, nstate;
   reg save_or_imm, save_or_imm_ld;
   integer i = 0;
+  //for ssub:
+  wire [31:0] alu_A_minus_B;
+  assign alu_A_minus_B = alu_in_A - alu_in_B;
 
   //combinational
   assign imm_ext = (instr[15] == 1)? {16'hFFFF, instr[15:0]} : {16'h0000, instr[15:0]};//Sign extend immediate field
@@ -372,8 +375,10 @@ module MIPS (CLK, RST, ctrl, CS, WE, ADDR, Mem_Bus, OUT, reg2);
             else  alu_result = alu_in_A + alu_in_B;
         end
         else if (opsave == ssub) begin                       //ssubb function
-            if ((alu_in_A - alu_in_B) < 0) alu_result = 0; 
-            else  alu_result = alu_in_A - alu_in_B; 
+            //if ((alu_in_A - alu_in_B) > 32'h7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) alu_result = 0; 
+//            else  alu_result = alu_in_A - alu_in_B; 
+          if(alu_A_minus_B[31] == 1'b1) alu_result = 0;
+          else  alu_result = alu_in_A - alu_in_B; 
         end
         if (((alu_in_A == alu_in_B)&&(`opcode == beq)) || ((alu_in_A != alu_in_B)&&(`opcode == bne))) begin
           npc = pc + imm_ext[6:0];
